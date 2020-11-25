@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "run as registering",
+            "name": "run regsvr32 (32 bit)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "regsvr32",
@@ -16,11 +16,11 @@
             "externalConsole": false
         },   
         {
-            "name": "excel",
+            "name": "run excel (32 bit)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\EXCEL.EXE",
-            "args": ["sheets\\rtdtest.xlsm"],
+            "args": ["sheets\\rtdtest.xlsx"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [{ "name": "RUST_LOG", "value": "debug" }],
