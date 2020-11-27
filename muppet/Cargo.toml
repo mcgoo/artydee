@@ -1,0 +1,18 @@
+[package]
+name = "muppet"
+version = "0.1.0"
+authors = ["Jim McGrath <jimmc2@gmail.com>"]
+edition = "2018"
+license = "MIT/Apache-2.0"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+artydee = { path = ".." }
+com = "0.3"
+env_logger = "0.8"
+log = "0.4"
+widestring = "0.4"
+winapi = "0.3"
+win_dbg_logger = "0.1"

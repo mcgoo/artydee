@@ -23,3 +23,8 @@ log = "0.4.11"
 widestring = "0.4"
 win_dbg_logger = "0.1.0"
 winapi = { version = "0.3", features = ["oaidl","combaseapi","oleauto"] } 
+
+[workspace]
+members = [
+    "muppet"
+]

@@ -34,6 +34,9 @@ use registry::*;
 
 pub type IRtdServer = interfaces::IRtdServer;
 
+pub use dll::{dll_can_unload_now, /*dll_get_class_object,*/ dll_main};
+pub use registry::{dll_register_server, dll_unregister_server, get_relevant_registry_keys};
+
 macro_rules! htry {
     ($expr:expr) => {
         let hr = $expr;
@@ -46,12 +49,12 @@ macro_rules! htry {
 
 // The CLSID of this RTD server. This GUID needs to be different for
 // every RTD application.
-pub const CLSID_CAT_CLASS: IID = IID {
-    data1: 0x0aea1daa,
-    data2: 0xdab5,
-    data3: 0xfac1,
-    data4: [0x8f, 0x6a, 0x83, 0xdc, 0x88, 0x98, 0x0a, 0x64],
-};
+// pub const CLSID_CAT_CLASS: IID = IID {
+//     data1: 0x0aea1daa,
+//     data2: 0xdab5,
+//     data3: 0xfac1,
+//     data4: [0x8f, 0x6a, 0x83, 0xdc, 0x88, 0x98, 0x0a, 0x64],
+// };
 
 // The CLSID for the IRtdServer interface Excel uses to call us. Being an Excel
 // interface, this GUID never changes.
@@ -61,6 +64,8 @@ pub const IID_IRTDSERVER: IID = IID {
     data3: 0x11D3,
     data4: [0x8F, 0x3E, 0x00, 0xC0, 0x4F, 0x36, 0x51, 0xB8],
 };
+
+pub const PROG_ID: &str = "Haka.PFX";
 
 // the module handle for this dll
 static mut _HMODULE: *mut c_void = null_mut();

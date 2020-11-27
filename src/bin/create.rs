@@ -1,4 +1,4 @@
-use artydee::{IRtdServer, CLSID_CAT_CLASS};
+use artydee::IRtdServer;
 use com::runtime::{create_instance, init_runtime};
 use com::sys::FAILED;
 use env_logger;
@@ -28,54 +28,54 @@ fn main() {
     }
     println!("done");
 
-    if false {
-        println!("create by clsid");
-        create_by_clsid()
-    } else {
-        println!("create by progid");
-        create_by_progid()
-    }
+    // if false {
+    //     println!("create by clsid");
+    //     create_by_clsid()
+    // } else {
+    //     println!("create by progid");
+    //     create_by_progid()
+    // }
 }
 
-fn create_by_progid() {
-    // this calls CoInitialize()
-    com::runtime::init_apartment(com::runtime::ApartmentType::Multithreaded).unwrap();
-    let mut clsid_cat_class: winapi::shared::guiddef::CLSID = unsafe { mem::zeroed() };
-    let rtd_server_progid = U16CString::from_str("Haka.PFX").unwrap();
+// fn create_by_progid() {
+//     // this calls CoInitialize()
+//     com::runtime::init_apartment(com::runtime::ApartmentType::Multithreaded).unwrap();
+//     let mut clsid_cat_class: winapi::shared::guiddef::CLSID = unsafe { mem::zeroed() };
+//     let rtd_server_progid = U16CString::from_str("Haka.PFX").unwrap();
 
-    unsafe {
-        if FAILED(winapi::um::combaseapi::CLSIDFromProgID(
-            rtd_server_progid.as_ptr(),
-            &mut clsid_cat_class,
-        )) {
-            panic!("failed for Haka.PFX at CLSIDFromProgID");
-        }
+//     unsafe {
+//         if FAILED(winapi::um::combaseapi::CLSIDFromProgID(
+//             rtd_server_progid.as_ptr(),
+//             &mut clsid_cat_class,
+//         )) {
+//             panic!("failed for Haka.PFX at CLSIDFromProgID");
+//         }
 
-        let c = &clsid_cat_class as *const winapi::shared::guiddef::GUID as *const com::sys::GUID;
+//         let c = &clsid_cat_class as *const winapi::shared::guiddef::GUID as *const com::sys::GUID;
 
-        let cat = create_instance::<IRtdServer>(&*c).expect("Failed to get a cat");
-        use_rtd_server(cat);
+//         let cat = create_instance::<IRtdServer>(&*c).expect("Failed to get a cat");
+//         use_rtd_server(cat);
 
-        println!("seemed to work out by progid");
-    }
+//         println!("seemed to work out by progid");
+//     }
 
-    //CLSIDFromProgID();
-    //CoCreateInstance();
-}
+//     //CLSIDFromProgID();
+//     //CoCreateInstance();
+// }
 
-fn create_by_clsid() {
-    init_runtime().expect("Failed to initialize COM Library");
-    println!("about to create it");
+// fn create_by_clsid() {
+//     init_runtime().expect("Failed to initialize COM Library");
+//     println!("about to create it");
 
-    let cat = create_instance::<IRtdServer>(&CLSID_CAT_CLASS).expect("Failed to get a cat");
-    use_rtd_server(cat);
+//     let cat = create_instance::<IRtdServer>(&CLSID_CAT_CLASS).expect("Failed to get a cat");
+//     use_rtd_server(cat);
 
-    // TODO: does dropping a com::Interface call IUnknown::Release()?
-}
+//     // TODO: does dropping a com::Interface call IUnknown::Release()?
+// }
 
-fn use_rtd_server(rtd_server: IRtdServer) {
-    unsafe {
-        // rtd_server.server_start(std::ptr::null_mut(), std::ptr::null_mut());
-        rtd_server.server_terminate();
-    }
-}
+// fn use_rtd_server(rtd_server: IRtdServer) {
+//     unsafe {
+//         // rtd_server.server_start(std::ptr::null_mut(), std::ptr::null_mut());
+//         rtd_server.server_terminate();
+//     }
+// }

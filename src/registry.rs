@@ -12,22 +12,22 @@ use std::ffi::{c_void, CString};
 use std::str;
 
 /// get the keys to set in the registry
-pub(crate) fn get_relevant_registry_keys() -> Vec<RegistryKeyInfo> {
-    use super::{CLSID_CAT_CLASS, _HMODULE};
+pub fn get_relevant_registry_keys(prog_id: &str, clsid: &GUID) -> Vec<RegistryKeyInfo> {
+    use super::_HMODULE;
 
     let file_path = unsafe { ::com::production::registration::get_dll_file_path(_HMODULE) };
-    let guid = guid_to_string(&CLSID_CAT_CLASS);
+    let guid = guid_to_string(clsid);
     let key = HKEY_CURRENT_USER_ROOT;
     let prefix = r"Software\Classes\";
     vec![
         RegistryKeyInfo::new(
             key,
-            &format!("{}{}", prefix, "Haka.PFX"),
+            &format!("{}{}", prefix, prog_id),
             "",
             "hakafeed.hakafeed",
         ),
-        RegistryKeyInfo::new(key, &format!("{}{}", prefix, "Haka.PFX\\CLSID"), "", &guid),
-        RegistryKeyInfo::new(key, &format!("{}CLSID\\{}", prefix, &guid), "", "Haka.PFX"),
+        RegistryKeyInfo::new(key, &format!("{}{}\\CLSID", prefix, prog_id), "", &guid),
+        RegistryKeyInfo::new(key, &format!("{}CLSID\\{}", prefix, &guid), "", prog_id),
         RegistryKeyInfo::new(
             key,
             &format!("{}CLSID\\{}\\InprocServer32", prefix, &guid),

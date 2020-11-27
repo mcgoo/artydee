@@ -3,8 +3,7 @@ use winapi::shared::minwindef::{BOOL, TRUE};
 
 use crate::*;
 
-#[no_mangle]
-extern "system" fn DllMain(
+pub fn dll_main(
     hinstance: *mut ::std::ffi::c_void,
     fdw_reason: u32,
     _reserved: *mut ::std::ffi::c_void,
@@ -22,40 +21,43 @@ extern "system" fn DllMain(
     TRUE
 }
 
-#[no_mangle]
-unsafe extern "stdcall" fn DllGetClassObject(
+// Look it up from somewhere?
+/*
+pub fn dll_get_class_object(
     class_id: *const ::com::sys::CLSID,
     iid: *const ::com::sys::IID,
     result: *mut *mut ::std::ffi::c_void,
 ) -> ::com::sys::HRESULT {
-    assert!(
-        !class_id.is_null(),
-        "class id passed to DllGetClassObject should never be null"
-    );
+    unsafe {
+        assert!(
+            !class_id.is_null(),
+            "class id passed to DllGetClassObject should never be null"
+        );
 
-    let class_id = &*class_id;
-    if class_id == &CLSID_CAT_CLASS {
-        let instance = <BritishShortHairCat as ::com::production::Class>::Factory::allocate();
-        instance.QueryInterface(&*iid, result)
-    } else {
-        ::com::sys::CLASS_E_CLASSNOTAVAILABLE
+        let class_id = &*class_id;
+        if class_id == &CLSID_CAT_CLASS {
+            let instance = <BritishShortHairCat as ::com::production::Class>::Factory::allocate();
+            instance.QueryInterface(&*iid, result)
+        } else {
+            ::com::sys::CLASS_E_CLASSNOTAVAILABLE
+        }
     }
 }
+*/
 
-#[no_mangle]
-extern "stdcall" fn DllRegisterServer() -> ::com::sys::HRESULT {
-    info!("DllRegisterServer");
-    dll_register_server(&mut get_relevant_registry_keys())
-}
+// #[no_mangle]
+// extern "stdcall" fn DllRegisterServer() -> ::com::sys::HRESULT {
+//     info!("DllRegisterServer");
+//     dll_register_server(&mut get_relevant_registry_keys(PROG_ID))
+// }
 
-#[no_mangle]
-extern "stdcall" fn DllUnregisterServer() -> ::com::sys::HRESULT {
-    info!("DllUnregisterServer");
-    dll_unregister_server(&mut get_relevant_registry_keys())
-}
+// #[no_mangle]
+// extern "stdcall" fn DllUnregisterServer() -> ::com::sys::HRESULT {
+//     info!("DllUnregisterServer");
+//     dll_unregister_server(&mut get_relevant_registry_keys(PROG_ID))
+// }
 
-#[no_mangle]
-extern "stdcall" fn DllCanUnloadNow() -> ::com::sys::HRESULT {
+pub fn dll_can_unload_now() -> ::com::sys::HRESULT {
     info!("DllCanUnloadNow()");
 
     // if there have been any calls to LockServer (which is not declared
