@@ -2,28 +2,11 @@ use com::{
     runtime::{init_apartment, ApartmentType},
     sys::{FAILED, HRESULT, IID, S_OK},
 };
-use log::{info, trace};
-use std::{
-    collections::BTreeMap, ffi::c_void, ptr::null_mut, ptr::NonNull, sync::Arc, sync::Mutex,
-    thread, time::Duration,
-};
-use winapi::shared::minwindef::{BOOL, TRUE};
-use winapi::shared::wtypesbase::LPOLESTR;
-use winapi::{
-    ctypes::c_long,
-    shared::{
-        guiddef::REFIID,
-        minwindef::{UINT, WORD},
-        ntdef::{LCID, LONG, ULONG},
-        winerror::{E_FAIL, E_NOTIMPL, E_POINTER},
-        wtypes::VT_VARIANT,
-        wtypes::{VARIANT_BOOL, VARTYPE},
-    },
-    um::{
-        oaidl::{ITypeInfo, DISPID, DISPPARAMS, EXCEPINFO, SAFEARRAY, SAFEARRAYBOUND, VARIANT},
-        oleauto::{SafeArrayAccessData, SafeArrayUnaccessData},
-    },
-};
+use log::{info};
+
+use winapi::shared::minwindef::{BOOL};
+
+
 
 // The CLSID of this RTD server. This GUID needs to be different for
 // every RTD application.

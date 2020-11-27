@@ -30,7 +30,7 @@ mod registry;
 pub mod variant;
 
 use interfaces::*;
-use registry::*;
+
 
 pub type IRtdServer = interfaces::IRtdServer;
 
