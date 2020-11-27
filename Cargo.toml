@@ -24,6 +24,9 @@ widestring = "0.4"
 win_dbg_logger = "0.1.0"
 winapi = { version = "0.3", features = ["oaidl","combaseapi","oleauto"] } 
 
+[patch.crates-io]
+com = { path = '../com-rs' }
+
 [workspace]
 members = [
     "muppet"

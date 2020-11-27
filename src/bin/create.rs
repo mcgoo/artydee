@@ -1,11 +1,7 @@
-
-
-
 use env_logger;
 use log::info;
+use std::env;
 use std::process::Command;
-use std::{env};
-
 
 fn main() {
     if env::var("RUST_LOG").is_err() {

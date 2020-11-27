@@ -1,12 +1,6 @@
-use com::{
-    runtime::{init_apartment, ApartmentType},
-    sys::{FAILED, HRESULT, IID, S_OK},
-};
-use log::{info};
-
-use winapi::shared::minwindef::{BOOL};
-
-
+use com::sys::IID;
+use log::info;
+use winapi::shared::minwindef::BOOL;
 
 // The CLSID of this RTD server. This GUID needs to be different for
 // every RTD application.
@@ -19,8 +13,6 @@ pub const CLSID_DOG_CLASS: IID = IID {
 
 const PROG_ID: &str = "Haka.PFY";
 
-//use crate::*;
-
 #[no_mangle]
 extern "system" fn DllMain(
     hinstance: *mut ::std::ffi::c_void,
@@ -29,28 +21,18 @@ extern "system" fn DllMain(
 ) -> BOOL {
     const DLL_PROCESS_ATTACH: u32 = 1;
     if fdw_reason == DLL_PROCESS_ATTACH {
-        //     // this function specifically says it can be called from DllMain
+        // this function specifically says it can be called from DllMain
         win_dbg_logger::rust_win_dbg_logger_init_info();
-        //     info!("loaded.");
-        //     unsafe {
-        //         _HMODULE = hinstance;
-        //         _ITYPEINFO = get_itypeinfo(hinstance);
-        //     }
+        info!("muppet loaded.");
     }
     artydee::dll_main(hinstance, fdw_reason, _reserved)
-
-    // const DLL_PROCESS_ATTACH: u32 = 1;
-    // if fdw_reason == DLL_PROCESS_ATTACH {
-    //     // this function specifically says it can be called from DllMain
-    //     win_dbg_logger::rust_win_dbg_logger_init_info();
-    //     info!("loaded.");
-    //     unsafe {
-    //         _HMODULE = hinstance;
-    //         _ITYPEINFO = get_itypeinfo(hinstance);
-    //     }
-    // }
-    // TRUE
 }
+
+struct MuppetDataFeed {
+    //
+}
+
+impl artydee::RtdServer for MuppetDataFeed {}
 
 #[no_mangle]
 unsafe extern "stdcall" fn DllGetClassObject(
@@ -66,8 +48,12 @@ unsafe extern "stdcall" fn DllGetClassObject(
 
     let class_id = &*class_id;
     if class_id == &CLSID_DOG_CLASS {
-        let instance =
+        let instance/*: com::production::ClassAllocation<artydee::BritishShortHairCatClassFactory>*/ =
             <artydee::BritishShortHairCat as ::com::production::Class>::Factory::allocate();
+
+        //let body = Box::new(MuppetDataFeed {});
+
+        // (**instance).set_something(body);
         instance.QueryInterface(&*iid, result)
     } else {
         ::com::sys::CLASS_E_CLASSNOTAVAILABLE

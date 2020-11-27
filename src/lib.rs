@@ -31,7 +31,6 @@ pub mod variant;
 
 use interfaces::*;
 
-
 pub type IRtdServer = interfaces::IRtdServer;
 
 pub use dll::{dll_can_unload_now, /*dll_get_class_object,*/ dll_main};
@@ -118,8 +117,13 @@ fn get_itypeinfo(hinstance: *mut c_void) -> *mut ITypeInfo {
 }
 
 com::class! {
+    // cat_data is the
     pub class BritishShortHairCat: IRtdServer(IDispatch) {
-        cat_data: Arc<Mutex<CatData>>
+        cat_data: Arc<Mutex<CatData>>,
+        // foo
+        cat_guts: Arc<Mutex<CatGuts>>,
+
+        body: Arc<Mutex<Option<Box<dyn RtdServer>>>>
     }
 
     impl IRtdServer for BritishShortHairCat {
@@ -134,10 +138,10 @@ com::class! {
             (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 30000 );
             info!("got here");
             let mut cat_data = self.cat_data.lock().unwrap();
-            let newarc = Arc::clone(&cat_data.cat_guts);
+            let newarc = Arc::clone(&self.cat_guts);
 
             // // TODO: can this fail? if not, why not?
-            let mut cat_guts = cat_data.cat_guts.lock().unwrap();
+            let mut cat_guts = self.cat_guts.lock().unwrap();
 
             // // store the callback to excel
             cat_guts.update_event = Some(callback_object);
@@ -164,8 +168,7 @@ com::class! {
             /*[out,retval]*/ pvar_out: *mut VARIANT,
         ) -> HRESULT {
             info!("connect_data: topic_id={} strings=? get_new_values={:x}",topic_id,*get_new_values);
-            let cat_data = self.cat_data.lock().unwrap();
-            let mut cat_guts = cat_data.cat_guts.lock().unwrap();
+            let mut cat_guts = self.cat_guts.lock().unwrap();
             cat_guts.connect_data(topic_id, strings, get_new_values, pvar_out)
 
         }
@@ -175,15 +178,13 @@ com::class! {
             /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
         ) -> HRESULT {
             info!("refresh_data: topic_count={}", *topic_count);
-            let cat_data = self.cat_data.lock().unwrap();
-            let cat_guts = cat_data.cat_guts.lock().unwrap();
+            let cat_guts = self.cat_guts.lock().unwrap();
             cat_guts.refresh_data(topic_count, parray_out)
         }
 
         unsafe fn disconnect_data(&self, /*[in]*/ topic_id: c_long) -> HRESULT {
             info!("disconnect_data: topic_id={}",topic_id);
-            let cat_data = self.cat_data.lock().unwrap();
-            let mut cat_guts = cat_data.cat_guts.lock().unwrap();
+            let mut cat_guts = self.cat_guts.lock().unwrap();
             cat_guts.disconnect_data(topic_id)
         }
         unsafe fn heartbeat(&self, /*[out,retval]*/ pf_res: *mut c_long) -> HRESULT {
@@ -261,15 +262,19 @@ com::class! {
     }
 }
 
+impl BritishShortHairCat {
+    pub fn set_something(&mut self, body: Box<dyn RtdServer>) {
+        let mut opt = self.body.lock().unwrap();
+        opt.replace(body);
+    }
+}
+
 pub struct CatData {
     /// the shutdown channel
     shutdown: Option<std::sync::mpsc::Sender<()>>,
 
     /// cat_loop handle
     cat_loop_joinhandle: Option<std::thread::JoinHandle<()>>,
-
-    /// data shared with the update loop
-    cat_guts: Arc<Mutex<CatGuts>>,
 }
 
 pub struct CatGuts {
@@ -278,6 +283,25 @@ pub struct CatGuts {
 
     // live topics
     topics: BTreeMap<c_long, Vec<String>>,
+}
+
+pub trait RtdServer {
+    // callback object
+    // fn update_notify(&self);
+
+    // unsafe fn connect_data(
+    //     &mut self,
+    //     /*[in]*/ topic_id: c_long,
+    //     /*[in]*/ _strings: *mut *mut SAFEARRAY,
+    //     /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
+    //     /*[out,retval]*/ _pvar_out: *mut VARIANT,
+    // ) -> HRESULT;
+    // unsafe fn refresh_data(
+    //     &self,
+    //     /*[in,out]*/ topic_count: *mut c_long,
+    //     /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
+    // ) -> HRESULT;
+    // unsafe fn disconnect_data(&mut self, /*[in]*/ topic_id: c_long) -> HRESULT;
 }
 
 impl CatGuts {
@@ -368,7 +392,6 @@ impl Default for CatGuts {
 impl Default for CatData {
     fn default() -> Self {
         Self {
-            cat_guts: Arc::new(Mutex::new(CatGuts::default())),
             shutdown: None,
             cat_loop_joinhandle: None,
         }
