@@ -167,7 +167,7 @@ fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()
     info!("starting the worker thread");
     init_apartment(ApartmentType::Multithreaded).unwrap();
 
-    let timeout = Duration::from_millis(5000);
+    let timeout = Duration::from_millis(1000);
     // wait for updates to data and add relevant changes to the dirty list
     loop {
         match ctrl_chan.recv_timeout(timeout) {
