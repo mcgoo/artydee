@@ -32,6 +32,7 @@ pub mod variant;
 use interfaces::*;
 
 pub type IRtdServer = interfaces::IRtdServer;
+pub type IRTDUpdateEvent = interfaces::IRTDUpdateEvent;
 
 pub use dll::{dll_can_unload_now, /*dll_get_class_object,*/ dll_main};
 pub use registry::{dll_register_server, dll_unregister_server, get_relevant_registry_keys};
@@ -72,6 +73,14 @@ static mut _HMODULE: *mut c_void = null_mut();
 // the typeinfo for IID_IRTDServer
 static mut _ITYPEINFO: *mut ITypeInfo = null_mut();
 //static mut foo: Option<ITypeInfo> = None; // this works
+
+static mut BODY_MAKER: Option<fn() -> Box<dyn RtdServer>> = None;
+// TODO: at the very least this should be marked as unsafe
+pub fn make_body(maker: fn() -> Box<dyn RtdServer>) {
+    unsafe {
+        BODY_MAKER = Some(maker);
+    }
+}
 
 /// Get the ITypeInfo for IID_IRTDServer
 fn get_itypeinfo(hinstance: *mut c_void) -> *mut ITypeInfo {
@@ -119,6 +128,7 @@ fn get_itypeinfo(hinstance: *mut c_void) -> *mut ITypeInfo {
 com::class! {
     // cat_data is the
     pub class BritishShortHairCat: IRtdServer(IDispatch) {
+
         cat_data: Arc<Mutex<CatData>>,
         // foo
         cat_guts: Arc<Mutex<CatGuts>>,
@@ -129,12 +139,19 @@ com::class! {
     impl IRtdServer for BritishShortHairCat {
         unsafe fn server_start(
             &self,
-            /*[in]*/ callback_object: NonNull<NonNull<<IRTDUpdateEvent as com::Interface>::VTable>>,
+
+               // /*[in]*/ callback_object: IRTDUpdateEvent,
+             /*[in]*/ callback_object: NonNull<NonNull<<IRTDUpdateEvent as com::Interface>::VTable>>,
             /*[out,retval]*/
             pf_res: *mut c_long,
         ) -> HRESULT {
-
             info!("server_start");
+            let mut body = self.body.lock().unwrap();
+            body.replace(BODY_MAKER.unwrap()());
+            let body = body.as_ref().unwrap();
+
+            body.server_start(callback_object, pf_res);
+
             (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 30000 );
             info!("got here");
             let mut cat_data = self.cat_data.lock().unwrap();
@@ -144,7 +161,7 @@ com::class! {
             let mut cat_guts = self.cat_guts.lock().unwrap();
 
             // // store the callback to excel
-            cat_guts.update_event = Some(callback_object);
+           // cat_guts.update_event = Some(callback_object);
             let (tx,rx)=std::sync::mpsc::channel::<()>();
             drop(cat_guts);
 
@@ -262,12 +279,12 @@ com::class! {
     }
 }
 
-impl BritishShortHairCat {
-    pub fn set_something(&mut self, body: Box<dyn RtdServer>) {
-        let mut opt = self.body.lock().unwrap();
-        opt.replace(body);
-    }
-}
+// impl BritishShortHairCat {
+//     pub fn set_something(&mut self, body: Box<dyn RtdServer>) {
+//         let mut opt = self.body.lock().unwrap();
+//         opt.replace(body);
+//     }
+// }
 
 pub struct CatData {
     /// the shutdown channel
@@ -286,22 +303,29 @@ pub struct CatGuts {
 }
 
 pub trait RtdServer {
-    // callback object
-    // fn update_notify(&self);
-
-    // unsafe fn connect_data(
-    //     &mut self,
-    //     /*[in]*/ topic_id: c_long,
-    //     /*[in]*/ _strings: *mut *mut SAFEARRAY,
-    //     /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
-    //     /*[out,retval]*/ _pvar_out: *mut VARIANT,
-    // ) -> HRESULT;
-    // unsafe fn refresh_data(
-    //     &self,
-    //     /*[in,out]*/ topic_count: *mut c_long,
-    //     /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
-    // ) -> HRESULT;
-    // unsafe fn disconnect_data(&mut self, /*[in]*/ topic_id: c_long) -> HRESULT;
+    unsafe fn server_start(
+        &self,
+        //       /*[in]*/ callback_object: IRTDUpdateEvent,
+        /*[in]*/
+        callback_object: NonNull<NonNull<IRTDUpdateEventVTable>>,
+        /*[out,retval]*/
+        pfres: *mut c_long,
+    ) -> HRESULT;
+    unsafe fn connect_data(
+        &self,
+        /*[in]*/ topic_id: c_long,
+        /*[in]*/ strings: *mut *mut SAFEARRAY,
+        /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
+        /*[out,retval]*/ pvar_out: *mut VARIANT,
+    ) -> HRESULT;
+    unsafe fn refresh_data(
+        &self,
+        /*[in,out]*/ topic_count: *mut c_long,
+        /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
+    ) -> HRESULT;
+    unsafe fn disconnect_data(&self, /*[in]*/ topic_id: c_long) -> HRESULT;
+    unsafe fn heartbeat(&self, /*[out,retval]*/ pf_res: *mut c_long) -> HRESULT;
+    unsafe fn server_terminate(&self) -> HRESULT;
 }
 
 impl CatGuts {
