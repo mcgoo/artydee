@@ -1,9 +1,29 @@
 use com::sys::IID;
-use log::info;
+use com::{
+    runtime::{init_apartment, ApartmentType},
+    sys::{FAILED, HRESULT},
+};
+use log::{info, trace};
 use std::ffi::c_void;
 use std::os::raw::c_long;
 use std::ptr::NonNull;
-use winapi::shared::minwindef::BOOL;
+use std::{collections::BTreeMap, sync::Arc, sync::Mutex, thread, time::Duration};
+use winapi::shared::wtypesbase::LPOLESTR;
+use winapi::shared::{minwindef::BOOL, winerror::S_OK};
+use winapi::{
+    shared::{
+        guiddef::REFIID,
+        minwindef::{UINT, WORD},
+        ntdef::{LCID, LONG, ULONG},
+        winerror::{E_FAIL, E_NOTIMPL, E_POINTER},
+        wtypes::VT_VARIANT,
+        wtypes::{VARIANT_BOOL, VARTYPE},
+    },
+    um::{
+        oaidl::{ITypeInfo, DISPID, DISPPARAMS, EXCEPINFO, SAFEARRAY, SAFEARRAYBOUND, VARIANT},
+        oleauto::{SafeArrayAccessData, SafeArrayUnaccessData},
+    },
+};
 
 // The CLSID of this RTD server. This GUID needs to be different for
 // every RTD application.
@@ -30,13 +50,155 @@ extern "system" fn DllMain(
     }
 
     // TODO: do this a different way
-    artydee::make_body(|| Box::new(MuppetDataFeed {}));
+    artydee::make_body(|| {
+        Box::new(MuppetDataFeed {
+            cat_data: Arc::new(Mutex::new(CatData::default())),
+            cat_guts: Arc::new(Mutex::new(CatGuts::default())),
+        })
+    });
 
     artydee::dll_main(hinstance, fdw_reason, _reserved)
 }
 
 struct MuppetDataFeed {
     //
+    cat_data: Arc<Mutex<CatData>>,
+    // foo
+    cat_guts: Arc<Mutex<CatGuts>>,
+}
+
+pub struct CatData {
+    /// the shutdown channel
+    shutdown: Option<std::sync::mpsc::Sender<()>>,
+
+    /// cat_loop handle
+    cat_loop_joinhandle: Option<std::thread::JoinHandle<()>>,
+}
+
+pub struct CatGuts {
+    // update_event: *const IRTDUpdateEvent,
+    update_event: Option<NonNull<NonNull<<artydee::IRTDUpdateEvent as com::Interface>::VTable>>>, // (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 1000 );
+
+    // live topics
+    topics: BTreeMap<c_long, Vec<String>>,
+}
+
+impl CatGuts {
+    // the IRTDUpdateEvent should have a lifetime of this CatGuts
+    // and it should Addref and Release the pointer, or better,
+    // store it in something that will do that automatically.
+    // fn update_event(&self) -> &IRTDUpdateEvent {
+    //     unsafe { &self.update_event.unwrap().as_ref() }
+    // }
+
+    // callback
+    fn update_notify(&self) {
+        info!("calling notify");
+        let callback_object = self.update_event.unwrap();
+        unsafe {
+            (callback_object.as_ref().as_ref().UpdateNotify)(callback_object);
+        }
+    }
+
+    unsafe fn connect_data(
+        &mut self,
+        /*[in]*/ topic_id: c_long,
+        /*[in]*/ _strings: *mut *mut SAFEARRAY,
+        /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
+        /*[out,retval]*/ _pvar_out: *mut VARIANT,
+    ) -> HRESULT {
+        info!(
+            "cat_guts connect_data: topic_id={} strings=? get_new_values={:x}",
+            topic_id, *get_new_values
+        );
+
+        let mut sa = **_strings;
+        let fields = artydee::decode_1d_safearray_of_variants_containing_strings(&mut sa);
+        let fields = match fields {
+            Ok(vs) => vs,
+            Err(hr) => return hr,
+        };
+
+        self.topics.insert(topic_id, fields);
+        S_OK
+    }
+    unsafe fn refresh_data(
+        &self,
+        /*[in,out]*/ topic_count: *mut c_long,
+        /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
+    ) -> HRESULT {
+        info!("cat_guts refresh_data");
+
+        // make up some data and return it for every topic
+        let now = chrono::Local::now().format(" %a %b %e %T %Y");
+
+        let updated_topics = self
+            .topics
+            .iter()
+            .map(|(topic, v)| {
+                let mut data = v.join(",");
+                data = data + &now.to_string();
+                let data = artydee::variant::make_bstr(data);
+                (*topic, data)
+            })
+            .collect::<Vec<_>>();
+
+        let sa = match artydee::topic_updates_to_safearray(&updated_topics) {
+            Ok(sa) => sa,
+            Err(hr) => return hr,
+        };
+
+        *parray_out = sa;
+        *topic_count = self.topics.len() as c_long; //yolo
+        S_OK
+    }
+    unsafe fn disconnect_data(&mut self, /*[in]*/ topic_id: c_long) -> HRESULT {
+        self.topics.remove(&topic_id);
+        S_OK
+    }
+}
+
+unsafe impl Send for CatGuts {}
+
+impl Default for CatGuts {
+    fn default() -> Self {
+        Self {
+            update_event: None,
+            topics: BTreeMap::new(),
+        }
+    }
+}
+impl Default for CatData {
+    fn default() -> Self {
+        Self {
+            shutdown: None,
+            cat_loop_joinhandle: None,
+        }
+    }
+}
+
+fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()>) {
+    info!("starting the worker thread");
+    init_apartment(ApartmentType::Multithreaded).unwrap();
+
+    let timeout = Duration::from_millis(5000);
+    // wait for updates to data and add relevant changes to the dirty list
+    loop {
+        match ctrl_chan.recv_timeout(timeout) {
+            Ok(()) => {
+                // nothing is supposed to send on this channel - the close down
+                // signal is just dropping the transmitter
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                let cat_guts = newarc.lock().unwrap();
+                cat_guts.update_notify();
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                break;
+            }
+        }
+    }
+    info!("the worker thread has ended");
 }
 
 impl artydee::RtdServer for MuppetDataFeed {
@@ -48,7 +210,29 @@ impl artydee::RtdServer for MuppetDataFeed {
         pf_res: *mut c_long,
     ) -> com::sys::HRESULT {
         info!("in muppet's server_start!");
-        winapi::shared::winerror::S_OK
+
+        (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 30000);
+        info!("got here");
+        let mut cat_data = self.cat_data.lock().unwrap();
+        let newarc = Arc::clone(&self.cat_guts);
+
+        // // TODO: can this fail? if not, why not?
+        let mut cat_guts = self.cat_guts.lock().unwrap();
+
+        // // store the callback to excel
+        // cat_guts.update_event = Some(callback_object);
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        drop(cat_guts);
+
+        cat_data.shutdown = Some(tx);
+
+        // TODO: store the JoinHandle so that the thread can be waited on
+        // during shutdown
+        let joinhandle = thread::spawn(move || cat_loop(newarc, rx));
+        cat_data.cat_loop_joinhandle = Some(joinhandle);
+
+        *pf_res = 1; // success
+        S_OK
     }
 
     unsafe fn connect_data(
@@ -58,7 +242,12 @@ impl artydee::RtdServer for MuppetDataFeed {
         /*[in,out]*/ get_new_values: *mut winapi::shared::wtypes::VARIANT_BOOL,
         /*[out,retval]*/ pvar_out: *mut winapi::um::oaidl::VARIANT,
     ) -> com::sys::HRESULT {
-        todo!()
+        info!(
+            "connect_data: topic_id={} strings=? get_new_values={:x}",
+            topic_id, *get_new_values
+        );
+        let mut cat_guts = self.cat_guts.lock().unwrap();
+        cat_guts.connect_data(topic_id, strings, get_new_values, pvar_out)
     }
 
     unsafe fn refresh_data(
@@ -66,25 +255,43 @@ impl artydee::RtdServer for MuppetDataFeed {
         /*[in,out]*/ topic_count: *mut winapi::ctypes::c_long,
         /*[out,retval]*/ parray_out: *mut *mut winapi::um::oaidl::SAFEARRAY,
     ) -> com::sys::HRESULT {
-        todo!()
+        info!("refresh_data: topic_count={}", *topic_count);
+        let cat_guts = self.cat_guts.lock().unwrap();
+        cat_guts.refresh_data(topic_count, parray_out)
     }
 
     unsafe fn disconnect_data(
         &self,
         /*[in]*/ topic_id: winapi::ctypes::c_long,
     ) -> com::sys::HRESULT {
-        todo!()
+        info!("disconnect_data: topic_id={}", topic_id);
+        let mut cat_guts = self.cat_guts.lock().unwrap();
+        cat_guts.disconnect_data(topic_id)
     }
 
     unsafe fn heartbeat(
         &self,
         /*[out,retval]*/ pf_res: *mut winapi::ctypes::c_long,
     ) -> com::sys::HRESULT {
-        todo!()
+        info!("heartbeat");
+        *pf_res = 1;
+        S_OK
     }
 
     unsafe fn server_terminate(&self) -> com::sys::HRESULT {
-        todo!()
+        info!("server_terminate");
+        let mut cat_data = self.cat_data.lock().unwrap();
+
+        // drop our end of the shutdown notification channel
+        cat_data.shutdown = None;
+
+        // wait on the thread
+        cat_data
+            .cat_loop_joinhandle
+            .take()
+            .map(std::thread::JoinHandle::join);
+
+        S_OK
     }
 }
 

@@ -126,13 +126,7 @@ fn get_itypeinfo(hinstance: *mut c_void) -> *mut ITypeInfo {
 }
 
 com::class! {
-    // cat_data is the
     pub class BritishShortHairCat: IRtdServer(IDispatch) {
-
-        cat_data: Arc<Mutex<CatData>>,
-        // foo
-        cat_guts: Arc<Mutex<CatGuts>>,
-
         body: Arc<Mutex<Option<Box<dyn RtdServer>>>>
     }
 
@@ -149,33 +143,7 @@ com::class! {
             let mut body = self.body.lock().unwrap();
             body.replace(BODY_MAKER.unwrap()());
             let body = body.as_ref().unwrap();
-
-            body.server_start(callback_object, pf_res);
-
-            (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 30000 );
-            info!("got here");
-            let mut cat_data = self.cat_data.lock().unwrap();
-            let newarc = Arc::clone(&self.cat_guts);
-
-            // // TODO: can this fail? if not, why not?
-            let mut cat_guts = self.cat_guts.lock().unwrap();
-
-            // // store the callback to excel
-           // cat_guts.update_event = Some(callback_object);
-            let (tx,rx)=std::sync::mpsc::channel::<()>();
-            drop(cat_guts);
-
-            cat_data.shutdown = Some(tx);
-
-            // TODO: store the JoinHandle so that the thread can be waited on
-            // during shutdown
-            let joinhandle = thread::spawn(move || {
-                cat_loop(newarc, rx)
-            });
-            cat_data.cat_loop_joinhandle = Some(joinhandle);
-
-            *pf_res=1; // success
-            S_OK
+            body.server_start(callback_object, pf_res)
         }
         unsafe fn connect_data(
             &self,
@@ -184,42 +152,40 @@ com::class! {
             /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
             /*[out,retval]*/ pvar_out: *mut VARIANT,
         ) -> HRESULT {
-            info!("connect_data: topic_id={} strings=? get_new_values={:x}",topic_id,*get_new_values);
-            let mut cat_guts = self.cat_guts.lock().unwrap();
-            cat_guts.connect_data(topic_id, strings, get_new_values, pvar_out)
-
+            let body = self.body.lock().unwrap();
+            let body = body.as_ref().unwrap();
+            body.connect_data(topic_id, strings, get_new_values,pvar_out)
         }
         unsafe fn refresh_data(
             &self,
             /*[in,out]*/ topic_count: *mut c_long,
             /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
         ) -> HRESULT {
-            info!("refresh_data: topic_count={}", *topic_count);
-            let cat_guts = self.cat_guts.lock().unwrap();
-            cat_guts.refresh_data(topic_count, parray_out)
+            let body = self.body.lock().unwrap();
+            let body = body.as_ref().unwrap();
+            body.refresh_data(topic_count, parray_out)
         }
 
         unsafe fn disconnect_data(&self, /*[in]*/ topic_id: c_long) -> HRESULT {
-            info!("disconnect_data: topic_id={}",topic_id);
-            let mut cat_guts = self.cat_guts.lock().unwrap();
-            cat_guts.disconnect_data(topic_id)
+            let body = self.body.lock().unwrap();
+            let body = body.as_ref().unwrap();
+            body.disconnect_data(topic_id)
         }
+
         unsafe fn heartbeat(&self, /*[out,retval]*/ pf_res: *mut c_long) -> HRESULT {
-            info!("heartbeat");
-            *pf_res = 1;
-            S_OK
+            let body = self.body.lock().unwrap();
+            let body = body.as_ref().unwrap();
+            body.heartbeat(pf_res)
         }
+
         unsafe fn server_terminate(&self) -> HRESULT {
-            info!("server_terminate");
-            let mut cat_data = self.cat_data.lock().unwrap();
+            let body = self.body.lock().unwrap();
+            let body = body.as_ref().unwrap();
+            let res = body.server_terminate();
 
-            // drop our end of the shutdown notification channel
-            cat_data.shutdown = None;
+            // TODO: drop self.body?
 
-            // wait on the thread
-            cat_data.cat_loop_joinhandle.take().map(std::thread::JoinHandle::join);
-
-            S_OK
+            res
         }
     }
 
@@ -279,29 +245,6 @@ com::class! {
     }
 }
 
-// impl BritishShortHairCat {
-//     pub fn set_something(&mut self, body: Box<dyn RtdServer>) {
-//         let mut opt = self.body.lock().unwrap();
-//         opt.replace(body);
-//     }
-// }
-
-pub struct CatData {
-    /// the shutdown channel
-    shutdown: Option<std::sync::mpsc::Sender<()>>,
-
-    /// cat_loop handle
-    cat_loop_joinhandle: Option<std::thread::JoinHandle<()>>,
-}
-
-pub struct CatGuts {
-    // update_event: *const IRTDUpdateEvent,
-    update_event: Option<NonNull<NonNull<<IRTDUpdateEvent as com::Interface>::VTable>>>, // (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 1000 );
-
-    // live topics
-    topics: BTreeMap<c_long, Vec<String>>,
-}
-
 pub trait RtdServer {
     unsafe fn server_start(
         &self,
@@ -328,125 +271,8 @@ pub trait RtdServer {
     unsafe fn server_terminate(&self) -> HRESULT;
 }
 
-impl CatGuts {
-    // the IRTDUpdateEvent should have a lifetime of this CatGuts
-    // and it should Addref and Release the pointer, or better,
-    // store it in something that will do that automatically.
-    // fn update_event(&self) -> &IRTDUpdateEvent {
-    //     unsafe { &self.update_event.unwrap().as_ref() }
-    // }
-
-    // callback
-    fn update_notify(&self) {
-        info!("calling notify");
-        let callback_object = self.update_event.unwrap();
-        unsafe {
-            (callback_object.as_ref().as_ref().UpdateNotify)(callback_object);
-        }
-    }
-
-    unsafe fn connect_data(
-        &mut self,
-        /*[in]*/ topic_id: c_long,
-        /*[in]*/ _strings: *mut *mut SAFEARRAY,
-        /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
-        /*[out,retval]*/ _pvar_out: *mut VARIANT,
-    ) -> HRESULT {
-        info!(
-            "cat_guts connect_data: topic_id={} strings=? get_new_values={:x}",
-            topic_id, *get_new_values
-        );
-
-        let mut sa = **_strings;
-        let fields = decode_1d_safearray_of_variants_containing_strings(&mut sa);
-        let fields = match fields {
-            Ok(vs) => vs,
-            Err(hr) => return hr,
-        };
-
-        self.topics.insert(topic_id, fields);
-        S_OK
-    }
-    unsafe fn refresh_data(
-        &self,
-        /*[in,out]*/ topic_count: *mut c_long,
-        /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
-    ) -> HRESULT {
-        info!("cat_guts refresh_data");
-
-        // make up some data and return it for every topic
-        let now = chrono::Local::now().format(" %a %b %e %T %Y");
-
-        let updated_topics = self
-            .topics
-            .iter()
-            .map(|(topic, v)| {
-                let mut data = v.join(",");
-                data = data + &now.to_string();
-                let data = variant::make_bstr(data);
-                (*topic, data)
-            })
-            .collect::<Vec<_>>();
-
-        let sa = match topic_updates_to_safearray(&updated_topics) {
-            Ok(sa) => sa,
-            Err(hr) => return hr,
-        };
-
-        *parray_out = sa;
-        *topic_count = self.topics.len() as c_long; //yolo
-        S_OK
-    }
-    unsafe fn disconnect_data(&mut self, /*[in]*/ topic_id: c_long) -> HRESULT {
-        self.topics.remove(&topic_id);
-        S_OK
-    }
-}
-
-unsafe impl Send for CatGuts {}
-
-impl Default for CatGuts {
-    fn default() -> Self {
-        Self {
-            update_event: None,
-            topics: BTreeMap::new(),
-        }
-    }
-}
-impl Default for CatData {
-    fn default() -> Self {
-        Self {
-            shutdown: None,
-            cat_loop_joinhandle: None,
-        }
-    }
-}
-
-fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()>) {
-    info!("starting the worker thread");
-    init_apartment(ApartmentType::Multithreaded).unwrap();
-
-    let timeout = Duration::from_millis(5000);
-    // wait for updates to data and add relevant changes to the dirty list
-    loop {
-        match ctrl_chan.recv_timeout(timeout) {
-            Ok(()) => {
-                // nothing is supposed to send on this channel - the close down
-                // signal is just dropping the transmitter
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                let cat_guts = newarc.lock().unwrap();
-                cat_guts.update_notify();
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                break;
-            }
-        }
-    }
-    info!("the worker thread has ended");
-}
-
-fn decode_1d_safearray_of_variants_containing_strings(
+/// TODO: not pub
+pub fn decode_1d_safearray_of_variants_containing_strings(
     sa: *mut SAFEARRAY,
 ) -> Result<Vec<String>, HRESULT> {
     unsafe {
@@ -487,7 +313,10 @@ fn decode_1d_safearray_of_variants_containing_strings(
 ///
 /// This does not check that the variants are of the copyable types. This
 /// should be fine for types that are accepted by Excel.
-fn topic_updates_to_safearray(data: &Vec<(c_long, VARIANT)>) -> Result<*mut SAFEARRAY, HRESULT> {
+/// TODO: not pub
+pub fn topic_updates_to_safearray(
+    data: &Vec<(c_long, VARIANT)>,
+) -> Result<*mut SAFEARRAY, HRESULT> {
     let mut bounds = [
         SAFEARRAYBOUND {
             cElements: 2,
