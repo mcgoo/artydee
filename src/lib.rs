@@ -130,7 +130,10 @@ com::class! {
             let mut body = self.body.lock().unwrap();
             body.replace(BODY_MAKER.unwrap()());
             let body = body.as_ref().unwrap();
-            body.server_start(callback_object, pf_res)
+            match body.server_start(callback_object) {
+                Ok(res) => {*pf_res = res as c_long ; S_OK}
+                Err(hr)=>hr
+            }
         }
         unsafe fn connect_data(
             &self,
@@ -244,9 +247,7 @@ pub trait RtdServer {
         //       /*[in]*/ callback_object: IRTDUpdateEvent,
         /*[in]*/
         callback_object: NonNull<NonNull<IRTDUpdateEventVTable>>,
-        /*[out,retval]*/
-        pfres: *mut c_long,
-    ) -> HRESULT;
+    ) -> Result<bool, HRESULT>;
     unsafe fn connect_data(
         &self,
         /*[in]*/ topic_id: c_long,
@@ -259,7 +260,7 @@ pub trait RtdServer {
         /*[in,out]*/ topic_count: *mut c_long,
         /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
     ) -> HRESULT;
-    unsafe fn disconnect_data(&self, /*[in]*/ topic_id: c_long) -> HRESULT;
+    fn disconnect_data(&self, topic_id: c_long) -> HRESULT;
     fn heartbeat(&self) -> Result<bool, HRESULT>;
     fn server_terminate(&self) -> HRESULT;
 }

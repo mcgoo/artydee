@@ -146,7 +146,7 @@ impl CatGuts {
         *topic_count = self.topics.len() as c_long; //yolo
         S_OK
     }
-    unsafe fn disconnect_data(&mut self, /*[in]*/ topic_id: c_long) -> HRESULT {
+    fn disconnect_data(&mut self, topic_id: c_long) -> HRESULT {
         self.topics.remove(&topic_id);
         S_OK
     }
@@ -197,12 +197,10 @@ fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()
 
 impl artydee::RtdServer for MuppetDataFeed {
     unsafe fn server_start(
-        &self, // /*[in]*/ callback_object: IRTDUpdateEvent,
+        &self,
         /*[in]*/
         callback_object: NonNull<NonNull<<artydee::IRTDUpdateEvent as com::Interface>::VTable>>,
-        /*[out,retval]*/
-        pf_res: *mut c_long,
-    ) -> com::sys::HRESULT {
+    ) -> Result<bool, HRESULT> {
         info!("in muppet's server_start!");
 
         (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 30000);
@@ -225,8 +223,7 @@ impl artydee::RtdServer for MuppetDataFeed {
         let joinhandle = thread::spawn(move || cat_loop(newarc, rx));
         cat_data.cat_loop_joinhandle = Some(joinhandle);
 
-        *pf_res = 1; // success
-        S_OK
+        Ok(true)
     }
 
     unsafe fn connect_data(
@@ -254,10 +251,7 @@ impl artydee::RtdServer for MuppetDataFeed {
         cat_guts.refresh_data(topic_count, parray_out)
     }
 
-    unsafe fn disconnect_data(
-        &self,
-        /*[in]*/ topic_id: winapi::ctypes::c_long,
-    ) -> com::sys::HRESULT {
+    fn disconnect_data(&self, topic_id: c_long) -> com::sys::HRESULT {
         info!("disconnect_data: topic_id={}", topic_id);
         let mut cat_guts = self.cat_guts.lock().unwrap();
         cat_guts.disconnect_data(topic_id)
