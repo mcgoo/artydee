@@ -306,9 +306,11 @@ pub fn decode_1d_safearray_of_variants_containing_strings(
 /// This does not check that the variants are of the copyable types. This
 /// should be fine for types that are accepted by Excel.
 /// TODO: not pub
-pub fn topic_updates_to_safearray(
-    data: &Vec<(c_long, VARIANT)>,
-) -> Result<*mut SAFEARRAY, HRESULT> {
+/// TODO: if the function returns early (htry!) the safearray is leaked
+pub fn topic_updates_to_safearray<I>(data: I) -> Result<*mut SAFEARRAY, HRESULT>
+where
+    I: ExactSizeIterator<Item = (c_long, VARIANT)>,
+{
     let mut bounds = [
         SAFEARRAYBOUND {
             cElements: 2,
@@ -415,7 +417,7 @@ mod tests {
 
         let data = vec![(1, v1), (7, v2)];
 
-        let sa = topic_updates_to_safearray(&data).unwrap();
+        let sa = topic_updates_to_safearray(data.into_iter()).unwrap();
         unsafe {
             let v = from_2d_safearray(&sa, 0, 0).unwrap();
             assert_eq!(v.n1.n2().vt, VT_I4 as VARTYPE);

@@ -126,18 +126,14 @@ impl CatGuts {
         // make up some data and return it for every topic
         let now = chrono::Local::now().format(" %a %b %e %T %Y");
 
-        let updated_topics = self
-            .topics
-            .iter()
-            .map(|(topic, v)| {
-                let mut data = v.join(",");
-                data = data + &now.to_string();
-                let data = artydee::variant::make_bstr(data);
-                (*topic, data)
-            })
-            .collect::<Vec<_>>();
+        let updated_topics = self.topics.iter().map(|(topic, v)| {
+            let mut data = v.join(",");
+            data = data + &now.to_string();
+            let data = artydee::variant::make_bstr(data);
+            (*topic, data)
+        });
 
-        let sa = match artydee::topic_updates_to_safearray(&updated_topics) {
+        let sa = match artydee::topic_updates_to_safearray(updated_topics) {
             Ok(sa) => sa,
             Err(hr) => return hr,
         };
