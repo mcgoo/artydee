@@ -47,15 +47,6 @@ macro_rules! htry {
     };
 }
 
-// The CLSID of this RTD server. This GUID needs to be different for
-// every RTD application.
-// pub const CLSID_CAT_CLASS: IID = IID {
-//     data1: 0x0aea1daa,
-//     data2: 0xdab5,
-//     data3: 0xfac1,
-//     data4: [0x8f, 0x6a, 0x83, 0xdc, 0x88, 0x98, 0x0a, 0x64],
-// };
-
 // The CLSID for the IRtdServer interface Excel uses to call us. Being an Excel
 // interface, this GUID never changes.
 pub const IID_IRTDSERVER: IID = IID {
@@ -180,6 +171,9 @@ com::class! {
 
         unsafe fn server_terminate(&self) -> HRESULT {
             let body = self.body.lock().unwrap();
+            if body.is_none(){
+                return E_FAIL;
+            }
             let body = body.as_ref().unwrap();
             let res = body.server_terminate();
 

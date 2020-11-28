@@ -220,7 +220,7 @@ impl artydee::RtdServer for MuppetDataFeed {
         let mut cat_guts = self.cat_guts.lock().unwrap();
 
         // // store the callback to excel
-        // cat_guts.update_event = Some(callback_object);
+        cat_guts.update_event = Some(callback_object);
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         drop(cat_guts);
 
