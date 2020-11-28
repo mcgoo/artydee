@@ -1,6 +1,10 @@
 use com::sys::{FAILED, HRESULT, IID, S_OK};
 use log::{info, trace};
-use std::{ffi::c_void, ptr::null_mut, ptr::NonNull, sync::Arc, sync::Mutex};
+use std::{
+    ffi::c_void,
+    ptr::{null_mut, NonNull},
+    sync::{Arc, Mutex},
+};
 use winapi::shared::wtypesbase::LPOLESTR;
 use winapi::{
     ctypes::c_long,
@@ -49,8 +53,6 @@ pub const IID_IRTDSERVER: IID = IID {
     data3: 0x11D3,
     data4: [0x8F, 0x3E, 0x00, 0xC0, 0x4F, 0x36, 0x51, 0xB8],
 };
-
-pub const PROG_ID: &str = "Haka.PFX";
 
 // the module handle for this dll
 static mut _HMODULE: *mut c_void = null_mut();
@@ -160,7 +162,10 @@ com::class! {
         unsafe fn heartbeat(&self, /*[out,retval]*/ pf_res: *mut c_long) -> HRESULT {
             let body = self.body.lock().unwrap();
             let body = body.as_ref().unwrap();
-            body.heartbeat(pf_res)
+            match body.heartbeat() {
+                Ok(res) => {*pf_res = res as c_long ; S_OK}
+                Err(hr)=>hr
+            }
         }
 
         unsafe fn server_terminate(&self) -> HRESULT {
@@ -255,8 +260,8 @@ pub trait RtdServer {
         /*[out,retval]*/ parray_out: *mut *mut SAFEARRAY,
     ) -> HRESULT;
     unsafe fn disconnect_data(&self, /*[in]*/ topic_id: c_long) -> HRESULT;
-    unsafe fn heartbeat(&self, /*[out,retval]*/ pf_res: *mut c_long) -> HRESULT;
-    unsafe fn server_terminate(&self) -> HRESULT;
+    fn heartbeat(&self) -> Result<bool, HRESULT>;
+    fn server_terminate(&self) -> HRESULT;
 }
 
 /// TODO: not pub

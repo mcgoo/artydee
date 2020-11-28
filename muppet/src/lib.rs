@@ -263,16 +263,12 @@ impl artydee::RtdServer for MuppetDataFeed {
         cat_guts.disconnect_data(topic_id)
     }
 
-    unsafe fn heartbeat(
-        &self,
-        /*[out,retval]*/ pf_res: *mut winapi::ctypes::c_long,
-    ) -> com::sys::HRESULT {
+    fn heartbeat(&self) -> Result<bool, HRESULT> {
         info!("heartbeat");
-        *pf_res = 1;
-        S_OK
+        Ok(true)
     }
 
-    unsafe fn server_terminate(&self) -> com::sys::HRESULT {
+    fn server_terminate(&self) -> com::sys::HRESULT {
         info!("server_terminate");
         let mut cat_data = self.cat_data.lock().unwrap();
 
