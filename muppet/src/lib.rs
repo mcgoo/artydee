@@ -1,28 +1,20 @@
 use com::sys::IID;
 use com::{
     runtime::{init_apartment, ApartmentType},
-    sys::{FAILED, HRESULT},
+    sys::HRESULT,
 };
-use log::{info, trace};
-use std::ffi::c_void;
+use log::info;
 use std::os::raw::c_long;
 use std::ptr::NonNull;
 use std::{collections::BTreeMap, sync::Arc, sync::Mutex, thread, time::Duration};
-use winapi::shared::wtypesbase::LPOLESTR;
+use std::{
+    ffi::c_void,
+    sync::mpsc::RecvTimeoutError::{Disconnected, Timeout},
+};
 use winapi::shared::{minwindef::BOOL, winerror::S_OK};
 use winapi::{
-    shared::{
-        guiddef::REFIID,
-        minwindef::{UINT, WORD},
-        ntdef::{LCID, LONG, ULONG},
-        winerror::{E_FAIL, E_NOTIMPL, E_POINTER},
-        wtypes::VT_VARIANT,
-        wtypes::{VARIANT_BOOL, VARTYPE},
-    },
-    um::{
-        oaidl::{ITypeInfo, DISPID, DISPPARAMS, EXCEPINFO, SAFEARRAY, SAFEARRAYBOUND, VARIANT},
-        oleauto::{SafeArrayAccessData, SafeArrayUnaccessData},
-    },
+    shared::wtypes::VARIANT_BOOL,
+    um::oaidl::{SAFEARRAY, VARIANT},
 };
 
 // The CLSID of this RTD server. This GUID needs to be different for
@@ -100,26 +92,28 @@ impl CatGuts {
         }
     }
 
-    unsafe fn connect_data(
+    fn connect_data(
         &mut self,
         /*[in]*/ topic_id: c_long,
         /*[in]*/ _strings: *mut *mut SAFEARRAY,
         /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
         /*[out,retval]*/ _pvar_out: *mut VARIANT,
     ) -> HRESULT {
-        info!(
-            "cat_guts connect_data: topic_id={} strings=? get_new_values={:x}",
-            topic_id, *get_new_values
-        );
+        unsafe {
+            info!(
+                "cat_guts connect_data: topic_id={} strings=? get_new_values={:x}",
+                topic_id, *get_new_values
+            );
 
-        let mut sa = **_strings;
-        let fields = artydee::decode_1d_safearray_of_variants_containing_strings(&mut sa);
-        let fields = match fields {
-            Ok(vs) => vs,
-            Err(hr) => return hr,
-        };
+            let mut sa = **_strings;
+            let fields = artydee::decode_1d_safearray_of_variants_containing_strings(&mut sa);
+            let fields = match fields {
+                Ok(vs) => vs,
+                Err(hr) => return hr,
+            };
 
-        self.topics.insert(topic_id, fields);
+            self.topics.insert(topic_id, fields);
+        }
         S_OK
     }
     unsafe fn refresh_data(
@@ -189,11 +183,11 @@ fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()
                 // nothing is supposed to send on this channel - the close down
                 // signal is just dropping the transmitter
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            Err(Timeout) => {
                 let cat_guts = newarc.lock().unwrap();
                 cat_guts.update_notify();
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(Disconnected) => {
                 break;
             }
         }
@@ -309,12 +303,8 @@ unsafe extern "stdcall" fn DllGetClassObject(
 
     let class_id = &*class_id;
     if class_id == &CLSID_DOG_CLASS {
-        let instance/*: com::production::ClassAllocation<artydee::BritishShortHairCatClassFactory>*/ =
+        let instance =
             <artydee::BritishShortHairCat as ::com::production::Class>::Factory::allocate();
-
-        //let body = Box::new(MuppetDataFeed {});
-
-        // (**instance).set_something(body);
         instance.QueryInterface(&*iid, result)
     } else {
         ::com::sys::CLASS_E_CLASSNOTAVAILABLE

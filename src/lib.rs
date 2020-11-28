@@ -1,12 +1,6 @@
-use com::{
-    runtime::{init_apartment, ApartmentType},
-    sys::{FAILED, HRESULT, IID, S_OK},
-};
+use com::sys::{FAILED, HRESULT, IID, S_OK};
 use log::{info, trace};
-use std::{
-    collections::BTreeMap, ffi::c_void, ptr::null_mut, ptr::NonNull, sync::Arc, sync::Mutex,
-    thread, time::Duration,
-};
+use std::{ffi::c_void, ptr::null_mut, ptr::NonNull, sync::Arc, sync::Mutex};
 use winapi::shared::wtypesbase::LPOLESTR;
 use winapi::{
     ctypes::c_long,
