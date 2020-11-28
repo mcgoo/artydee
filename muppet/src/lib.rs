@@ -42,16 +42,12 @@ extern "system" fn DllMain(
     }
 
     // TODO: do this a different way
-    artydee::make_body(|| {
-        Box::new(MuppetDataFeed {
-            cat_data: Arc::new(Mutex::new(CatData::default())),
-            cat_guts: Arc::new(Mutex::new(CatGuts::default())),
-        })
-    });
+    artydee::make_body(|| Box::new(MuppetDataFeed::default()));
 
     artydee::dll_main(hinstance, fdw_reason, _reserved)
 }
 
+#[derive(Default)]
 struct MuppetDataFeed {
     //
     cat_data: Arc<Mutex<CatData>>,
@@ -214,8 +210,7 @@ impl artydee::RtdServer for MuppetDataFeed {
 
         cat_data.shutdown = Some(tx);
 
-        // TODO: store the JoinHandle so that the thread can be waited on
-        // during shutdown
+        // store the JoinHandle so that the thread can be waited on during shutdown
         let joinhandle = thread::spawn(move || cat_loop(newarc, rx));
         cat_data.cat_loop_joinhandle = Some(joinhandle);
 
