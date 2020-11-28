@@ -244,9 +244,7 @@ com::class! {
 pub trait RtdServer {
     unsafe fn server_start(
         &self,
-        //       /*[in]*/ callback_object: IRTDUpdateEvent,
-        /*[in]*/
-        callback_object: NonNull<NonNull<IRTDUpdateEventVTable>>,
+        /*[in]*/ callback_object: NonNull<NonNull<IRTDUpdateEventVTable>>,
     ) -> Result<bool, HRESULT>;
     unsafe fn connect_data(
         &self,
