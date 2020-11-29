@@ -53,9 +53,11 @@ extern "system" fn DllMain(
 
 #[derive(Default)]
 struct MuppetDataFeed {
-    //
+    // mutable data accessible only by
+    // calls through COM
     cat_data: Arc<Mutex<CatData>>,
-    // foo
+
+    // Things that are shared with the data updating thread
     cat_guts: Arc<Mutex<CatGuts>>,
 }
 
@@ -174,15 +176,15 @@ impl artydee::RtdServer for MuppetDataFeed {
     fn server_start(&self, callback_object: RtdUpdateEvent) -> Result<bool, HRESULT> {
         info!("in muppet's server_start!");
 
-        callback_object.put_heartbeat_interval(5)?;
+        callback_object.put_heartbeat_interval(30000)?;
         info!("got here");
         let mut cat_data = self.cat_data.lock().unwrap();
         let newarc = Arc::clone(&self.cat_guts);
 
-        // // TODO: can this fail? if not, why not?
+        // TODO: can this fail? if not, why not?
         let mut cat_guts = self.cat_guts.lock().unwrap();
 
-        // // store the callback to excel
+        // store the callback to excel
         cat_guts.update_event = Some(callback_object);
         let (tx, rx) = std::sync::mpsc::channel::<()>();
         drop(cat_guts);
