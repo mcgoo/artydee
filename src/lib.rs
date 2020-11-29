@@ -121,7 +121,7 @@ com::class! {
         unsafe fn server_start(
             &self,
 
-               // /*[in]*/ callback_object: IRTDUpdateEvent,
+               // why is this not IRTDUpdateEvent
              /*[in]*/ callback_object: NonNull<NonNull<<IRTDUpdateEvent as com::Interface>::VTable>>,
             /*[out,retval]*/
             pf_res: *mut c_long,
@@ -130,6 +130,9 @@ com::class! {
             let mut body = self.body.lock().unwrap();
             body.replace(BODY_MAKER.unwrap()());
             let body = body.as_ref().unwrap();
+
+            //let c = RtdUpdateEvent::new(callback_object);
+
             match body.server_start(callback_object) {
                 Ok(res) => {*pf_res = res as c_long ; S_OK}
                 Err(hr)=>hr
@@ -391,6 +394,43 @@ extern "system" {
         rgIndices: *mut LONG,
         pv: *mut c_void,
     ) -> HRESULT;
+}
+
+struct RtdUpdateEvent {
+    rtd_update_event: NonNull<NonNull<IRTDUpdateEventVTable>>,
+}
+impl RtdUpdateEvent {
+    fn update_notify(&self) -> Result<(), HRESULT> {
+        htry!(unsafe {
+            (self.rtd_update_event.as_ref().as_ref().UpdateNotify)(self.rtd_update_event)
+        });
+        Ok(())
+    }
+    fn get_heartbeat_interval(&self) -> Result<c_long, HRESULT> {
+        let mut interval = 0;
+        htry!(unsafe {
+            (self.rtd_update_event.as_ref().as_ref().GetHeartbeatInterval)(
+                self.rtd_update_event,
+                &mut interval as *mut c_long,
+            )
+        });
+        Ok(interval)
+    }
+    fn put_heartbeat_interval(&self, interval: c_long) -> Result<(), HRESULT> {
+        htry!(unsafe {
+            (self.rtd_update_event.as_ref().as_ref().PutHeartbeatInterval)(
+                self.rtd_update_event,
+                interval,
+            )
+        });
+        Ok(())
+    }
+    fn disconnect(&self) -> Result<(), HRESULT> {
+        htry!(unsafe {
+            (self.rtd_update_event.as_ref().as_ref().Disconnect)(self.rtd_update_event)
+        });
+        Ok(())
+    }
 }
 
 #[cfg(test)]
