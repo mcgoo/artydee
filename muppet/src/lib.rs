@@ -1,3 +1,4 @@
+use artydee::RtdUpdateEvent;
 use com::{
     runtime::{init_apartment, ApartmentType},
     sys::{HRESULT, IID},
@@ -7,7 +8,6 @@ use std::{
     collections::BTreeMap,
     ffi::c_void,
     os::raw::c_long,
-    ptr::NonNull,
     sync::{
         mpsc::RecvTimeoutError::{Disconnected, Timeout},
         Arc, Mutex,
@@ -68,23 +68,14 @@ pub struct CatData {
 }
 
 pub struct CatGuts {
-    // update_event: *const IRTDUpdateEvent,
-    update_event: Option<NonNull<NonNull<<artydee::IRTDUpdateEvent as com::Interface>::VTable>>>, // (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 1000 );
-
+    // TODO: could this Option be avoided by putting this whole
+    // CatGuts into an Option and creating it in server
+    update_event: Option<RtdUpdateEvent>,
     // live topics
     topics: BTreeMap<c_long, Vec<String>>,
 }
 
 impl CatGuts {
-    // callback
-    fn update_notify(&self) {
-        info!("calling notify");
-        let callback_object = self.update_event.unwrap();
-        unsafe {
-            (callback_object.as_ref().as_ref().UpdateNotify)(callback_object);
-        }
-    }
-
     fn connect_data(
         &mut self,
         topic_id: c_long,
@@ -169,7 +160,7 @@ fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()
             }
             Err(Timeout) => {
                 let cat_guts = newarc.lock().unwrap();
-                cat_guts.update_notify();
+                cat_guts.update_event.as_ref().unwrap().update_notify().ok();
             }
             Err(Disconnected) => {
                 break;
@@ -180,14 +171,10 @@ fn cat_loop(newarc: Arc<Mutex<CatGuts>>, ctrl_chan: std::sync::mpsc::Receiver<()
 }
 
 impl artydee::RtdServer for MuppetDataFeed {
-    unsafe fn server_start(
-        &self,
-        /*[in]*/
-        callback_object: NonNull<NonNull<<artydee::IRTDUpdateEvent as com::Interface>::VTable>>,
-    ) -> Result<bool, HRESULT> {
+    fn server_start(&self, callback_object: RtdUpdateEvent) -> Result<bool, HRESULT> {
         info!("in muppet's server_start!");
 
-        (callback_object.as_ref().as_ref().PutHeartbeatInterval)(callback_object, 30000);
+        callback_object.put_heartbeat_interval(5)?;
         info!("got here");
         let mut cat_data = self.cat_data.lock().unwrap();
         let newarc = Arc::clone(&self.cat_guts);

@@ -121,7 +121,7 @@ com::class! {
         unsafe fn server_start(
             &self,
 
-               // why is this not IRTDUpdateEvent
+               // why is this not IRTDUpdateEvent?
              /*[in]*/ callback_object: NonNull<NonNull<<IRTDUpdateEvent as com::Interface>::VTable>>,
             /*[out,retval]*/
             pf_res: *mut c_long,
@@ -131,9 +131,9 @@ com::class! {
             body.replace(BODY_MAKER.unwrap()());
             let body = body.as_ref().unwrap();
 
-            //let c = RtdUpdateEvent::new(callback_object);
+            let c = RtdUpdateEvent::new(callback_object);
 
-            match body.server_start(callback_object) {
+            match body.server_start(c) {
                 Ok(res) => {*pf_res = res as c_long ; S_OK}
                 Err(hr)=>hr
             }
@@ -191,6 +191,7 @@ com::class! {
         }
 
         unsafe fn heartbeat(&self, /*[out,retval]*/ pf_res: *mut c_long) -> HRESULT {
+            info!("heartbeat");
             let body = self.body.lock().unwrap();
             let body = body.as_ref().unwrap();
             match body.heartbeat() {
@@ -270,10 +271,7 @@ com::class! {
 }
 
 pub trait RtdServer {
-    unsafe fn server_start(
-        &self,
-        /*[in]*/ callback_object: NonNull<NonNull<IRTDUpdateEventVTable>>,
-    ) -> Result<bool, HRESULT>;
+    fn server_start(&self, callback_object: RtdUpdateEvent) -> Result<bool, HRESULT>;
     fn connect_data(
         &self,
         topic_id: c_long,
@@ -396,17 +394,17 @@ extern "system" {
     ) -> HRESULT;
 }
 
-struct RtdUpdateEvent {
+pub struct RtdUpdateEvent {
     rtd_update_event: NonNull<NonNull<IRTDUpdateEventVTable>>,
 }
 impl RtdUpdateEvent {
-    fn update_notify(&self) -> Result<(), HRESULT> {
+    pub fn update_notify(&self) -> Result<(), HRESULT> {
         htry!(unsafe {
             (self.rtd_update_event.as_ref().as_ref().UpdateNotify)(self.rtd_update_event)
         });
         Ok(())
     }
-    fn get_heartbeat_interval(&self) -> Result<c_long, HRESULT> {
+    pub fn get_heartbeat_interval(&self) -> Result<c_long, HRESULT> {
         let mut interval = 0;
         htry!(unsafe {
             (self.rtd_update_event.as_ref().as_ref().GetHeartbeatInterval)(
@@ -416,7 +414,7 @@ impl RtdUpdateEvent {
         });
         Ok(interval)
     }
-    fn put_heartbeat_interval(&self, interval: c_long) -> Result<(), HRESULT> {
+    pub fn put_heartbeat_interval(&self, interval: c_long) -> Result<(), HRESULT> {
         htry!(unsafe {
             (self.rtd_update_event.as_ref().as_ref().PutHeartbeatInterval)(
                 self.rtd_update_event,
@@ -425,11 +423,15 @@ impl RtdUpdateEvent {
         });
         Ok(())
     }
-    fn disconnect(&self) -> Result<(), HRESULT> {
+    pub fn disconnect(&self) -> Result<(), HRESULT> {
         htry!(unsafe {
             (self.rtd_update_event.as_ref().as_ref().Disconnect)(self.rtd_update_event)
         });
         Ok(())
+    }
+
+    fn new(rtd_update_event: NonNull<NonNull<IRTDUpdateEventVTable>>) -> Self {
+        Self { rtd_update_event }
     }
 }
 
