@@ -10,7 +10,7 @@ use winapi::{
     ctypes::c_long,
     shared::{
         guiddef::REFIID,
-        minwindef::{UINT, WORD},
+        minwindef::{FALSE, TRUE, UINT, WORD},
         ntdef::{LCID, LONG, ULONG},
         winerror::{E_FAIL, E_NOTIMPL, E_POINTER},
         wtypes::VT_VARIANT,
@@ -142,9 +142,34 @@ com::class! {
             /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
             /*[out,retval]*/ pvar_out: *mut VARIANT,
         ) -> HRESULT {
+
+            let mut sa = **strings;
+            let fields = decode_1d_safearray_of_variants_containing_strings(&mut sa);
+            let fields = match fields {
+                Ok(vs) => vs,
+                Err(hr) => return hr,
+            };
+
+
+            let fields: Vec<&str> = fields.iter().map(|s| &**s).collect();
+
             let body = self.body.lock().unwrap();
             let body = body.as_ref().unwrap();
-            body.connect_data(topic_id, strings, get_new_values,pvar_out)
+
+            match body.connect_data(topic_id, fields.as_slice(), *get_new_values != FALSE as i16) {
+                Ok(Some(variant)) => {
+                    *get_new_values = TRUE as i16;
+                    *pvar_out = variant;
+                    S_OK
+                },    Ok(None) => {
+                    *get_new_values = FALSE as i16;
+                    S_OK
+                },
+                Err(hr) => {
+                    *get_new_values = FALSE as i16;
+                    hr
+                }
+            }
         }
         unsafe fn refresh_data(
             &self,
@@ -246,13 +271,12 @@ pub trait RtdServer {
         &self,
         /*[in]*/ callback_object: NonNull<NonNull<IRTDUpdateEventVTable>>,
     ) -> Result<bool, HRESULT>;
-    unsafe fn connect_data(
+    fn connect_data(
         &self,
-        /*[in]*/ topic_id: c_long,
-        /*[in]*/ strings: *mut *mut SAFEARRAY,
-        /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
-        /*[out,retval]*/ pvar_out: *mut VARIANT,
-    ) -> HRESULT;
+        topic_id: c_long,
+        strings: &[&str],
+        get_new_values: bool,
+    ) -> Result<Option<VARIANT>, HRESULT>;
     unsafe fn refresh_data(
         &self,
         /*[in,out]*/ topic_count: *mut c_long,

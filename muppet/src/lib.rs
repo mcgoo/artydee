@@ -1,19 +1,23 @@
-use com::sys::IID;
 use com::{
     runtime::{init_apartment, ApartmentType},
-    sys::HRESULT,
+    sys::{HRESULT, IID},
 };
 use log::info;
-use std::os::raw::c_long;
-use std::ptr::NonNull;
-use std::{collections::BTreeMap, sync::Arc, sync::Mutex, thread, time::Duration};
 use std::{
+    collections::BTreeMap,
     ffi::c_void,
-    sync::mpsc::RecvTimeoutError::{Disconnected, Timeout},
+    os::raw::c_long,
+    ptr::NonNull,
+    sync::{
+        mpsc::RecvTimeoutError::{Disconnected, Timeout},
+        Arc, Mutex,
+    },
+    thread,
+    thread::JoinHandle,
+    time::Duration,
 };
-use winapi::shared::{minwindef::BOOL, winerror::S_OK};
 use winapi::{
-    shared::wtypes::VARIANT_BOOL,
+    shared::{minwindef::BOOL, winerror::S_OK},
     um::oaidl::{SAFEARRAY, VARIANT},
 };
 
@@ -72,13 +76,6 @@ pub struct CatGuts {
 }
 
 impl CatGuts {
-    // the IRTDUpdateEvent should have a lifetime of this CatGuts
-    // and it should Addref and Release the pointer, or better,
-    // store it in something that will do that automatically.
-    // fn update_event(&self) -> &IRTDUpdateEvent {
-    //     unsafe { &self.update_event.unwrap().as_ref() }
-    // }
-
     // callback
     fn update_notify(&self) {
         info!("calling notify");
@@ -90,27 +87,22 @@ impl CatGuts {
 
     fn connect_data(
         &mut self,
-        /*[in]*/ topic_id: c_long,
-        /*[in]*/ _strings: *mut *mut SAFEARRAY,
-        /*[in,out]*/ get_new_values: *mut VARIANT_BOOL,
-        /*[out,retval]*/ _pvar_out: *mut VARIANT,
-    ) -> HRESULT {
-        unsafe {
-            info!(
-                "cat_guts connect_data: topic_id={} strings=? get_new_values={:x}",
-                topic_id, *get_new_values
-            );
+        topic_id: c_long,
+        strings: &[&str],
+        get_new_values: bool,
+    ) -> Result<Option<VARIANT>, HRESULT> {
+        info!(
+            "cat_guts connect_data: topic_id={} strings=? get_new_values={}",
+            topic_id, get_new_values
+        );
 
-            let mut sa = **_strings;
-            let fields = artydee::decode_1d_safearray_of_variants_containing_strings(&mut sa);
-            let fields = match fields {
-                Ok(vs) => vs,
-                Err(hr) => return hr,
-            };
+        let fields = strings
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        self.topics.insert(topic_id, fields);
 
-            self.topics.insert(topic_id, fields);
-        }
-        S_OK
+        Ok(None)
     }
     unsafe fn refresh_data(
         &self,
@@ -217,24 +209,23 @@ impl artydee::RtdServer for MuppetDataFeed {
         Ok(true)
     }
 
-    unsafe fn connect_data(
+    fn connect_data(
         &self,
-        /*[in]*/ topic_id: winapi::ctypes::c_long,
-        /*[in]*/ strings: *mut *mut winapi::um::oaidl::SAFEARRAY,
-        /*[in,out]*/ get_new_values: *mut winapi::shared::wtypes::VARIANT_BOOL,
-        /*[out,retval]*/ pvar_out: *mut winapi::um::oaidl::VARIANT,
-    ) -> com::sys::HRESULT {
-        info!(
-            "connect_data: topic_id={} strings=? get_new_values={:x}",
-            topic_id, *get_new_values
-        );
+        topic_id: c_long,
+        strings: &[&str],
+        get_new_values: bool,
+    ) -> Result<Option<VARIANT>, com::sys::HRESULT> {
+        // info!(
+        //     "connect_data: topic_id={:?} strings={} get_new_values={:x}",
+        //     topic_id, strings, get_new_values
+        // );
         let mut cat_guts = self.cat_guts.lock().unwrap();
-        cat_guts.connect_data(topic_id, strings, get_new_values, pvar_out)
+        cat_guts.connect_data(topic_id, strings, get_new_values)
     }
 
     unsafe fn refresh_data(
         &self,
-        /*[in,out]*/ topic_count: *mut winapi::ctypes::c_long,
+        /*[in,out]*/ topic_count: *mut c_long,
         /*[out,retval]*/ parray_out: *mut *mut winapi::um::oaidl::SAFEARRAY,
     ) -> com::sys::HRESULT {
         info!("refresh_data: topic_count={}", *topic_count);
@@ -261,10 +252,7 @@ impl artydee::RtdServer for MuppetDataFeed {
         cat_data.shutdown = None;
 
         // wait on the thread
-        cat_data
-            .cat_loop_joinhandle
-            .take()
-            .map(std::thread::JoinHandle::join);
+        cat_data.cat_loop_joinhandle.take().map(JoinHandle::join);
 
         S_OK
     }
@@ -276,7 +264,7 @@ unsafe extern "stdcall" fn DllGetClassObject(
     iid: *const ::com::sys::IID,
     result: *mut *mut c_void,
 ) -> ::com::sys::HRESULT {
-    // artydee::dll_get_class_object(class_id, iid, result)
+    //artydee::dll_get_class_object(class_id, iid, result)
     assert!(
         !class_id.is_null(),
         "class id passed to DllGetClassObject should never be null"
@@ -319,12 +307,4 @@ extern "stdcall" fn DllCanUnloadNow() -> ::com::sys::HRESULT {
 
     use com::sys::S_FALSE;
     S_FALSE
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
 }
