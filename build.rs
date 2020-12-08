@@ -10,7 +10,7 @@ fn main() {
     // dbg!(path);
 
     let tool = cc::windows_registry::find_tool(&target, "cl.exe").unwrap();
-    let midl = embed_resource::find_tool("midl.exe");
+    let midl = embed_resource::find_windows_sdk_tool("midl.exe");
     let mut command = Command::new(midl.unwrap());
 
     for (k, v) in tool.env() {
